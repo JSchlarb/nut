@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nut
+  namespace: kube-system
+  labels:
+    app: nut
+spec:
+  initContainers:
+    - name: config
+      image: ghcr.io/jschlarb/nut/nut:0.0.1
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: UPS_DRIVER
+          value: blazer_usb
+      command:
+        - /opt/init-script.sh
+      securityContext:
+        allowPrivilegeEscalation: true
+        privileged: true
+      volumeMounts:
+        - mountPath: /etc/nut
+          name: config
+        - mountPath: /dev/bus
+          name: host-dev-bus
+  containers:
+    - name: nut-upsdrvctl
+      image: ghcr.io/jschlarb/nut/nut:0.0.1
+      imagePullPolicy: IfNotPresent
+      resources: { }
+      command:
+        - /usr/sbin/upsdrvctl
+      args:
+        - "-FF"
+        - "start"
+      securityContext:
+        allowPrivilegeEscalation: true
+        privileged: true
+      volumeMounts:
+        - mountPath: /dev/bus
+          name: host-dev-bus
+        - mountPath: /etc/nut
+          name: config
+        - mountPath: /var/run/nut
+          name: socket
+    - name: nut-upsd
+      image: ghcr.io/jschlarb/nut/nut:0.0.1
+      imagePullPolicy: IfNotPresent
+      resources: { }
+      command:
+        - /usr/sbin/upsd
+      args:
+        - "-FF"
+      securityContext: { }
+      ports:
+        - containerPort: 3493
+          protocol: TCP
+          name: ups
+      volumeMounts:
+        - mountPath: /dev/bus
+          name: host-dev-bus
+        - mountPath: /etc/nut
+          name: config
+        - mountPath: /var/run/nut
+          name: socket
+  nodeName: ubuntu
+  restartPolicy: Always
+  securityContext: { }
+  tolerations:
+    - operator: Exists
+  volumes:
+    - name: config
+      emptyDir: { }
+    - name: socket
+      emptyDir: { }
+    - hostPath:
+        path: /dev/bus
+        type: ""
+      name: host-dev-bus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nut
+  namespace: kube-system
+spec:
+  ports:
+    - port: 3493
+      protocol: TCP
+      targetPort: 3493
+  selector:
+    app: nut
+  type: LoadBalancer
